@@ -4,7 +4,6 @@ import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.AbstractService;
 import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.WatchedEvent;
@@ -12,11 +11,16 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Stat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.lang.Exception;import java.lang.InterruptedException;import java.lang.Override;import java.lang.String;import java.lang.Throwable;import java.util.List;
+import java.util.List;
+
+import static com.google.common.util.concurrent.Futures.addCallback;
 
 public class ZooKeeperClientService extends AbstractService implements ZooKeeperClient, Watcher {
 
+  private final Logger log = LoggerFactory.getLogger(getClass());
   private final String connectString;
   private Optional<ZooKeeper> client;
 
@@ -27,10 +31,14 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
 
   @Override
   public void process(WatchedEvent watchedEvent) {
+    log.debug("{}", watchedEvent);
     switch (watchedEvent.getState()) {
       case AuthFailed:
       case Expired:
         notifyFailed(new Exception(watchedEvent.getState().toString()));
+        break;
+      case SyncConnected:
+        notifyStarted();
         break;
       default:
         //log it
@@ -41,8 +49,7 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
   @Override
   protected void doStart() {
     try {
-      client = Optional.of(new ZooKeeper(connectString, 1000, this));
-      notifyStarted();
+      client = Optional.of(new ZooKeeper(connectString, 10000, this));
     } catch (Exception e) {
       notifyFailed(e);
     }
@@ -133,28 +140,26 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
     return callback;
   }
 
+  @Override
+  public ListenableFuture<List<String>> getChildren(String path) {
+    Preconditions.checkState(isRunning());
+    final CompletableAsyncChildrenCallback callback = new CompletableAsyncChildrenCallback();
+    client.get().getChildren(path, false, callback, null);
+    return callback;
+  }
+
   public void watchData(final PersistentWatch watch, final String path, final PersistentWatcher<byte[]> watcher) {
 
-    Preconditions.checkState(isRunning());
+    if (watch.isCancelled()) {
+      return;
+    }
 
-    final ListenableFuture<byte[]> f = getData(path, new Watcher() {
+    addCallback(getData(path, new Watcher() {
       @Override
       public void process(WatchedEvent event) {
         watchData(path, watcher);
       }
-    });
-
-    Futures.addCallback(f, new FutureCallback<byte[]>() {
-      @Override
-      public void onSuccess(byte[] bytes) {
-        watcher.watchTriggered(bytes);
-      }
-
-      @Override
-      public void onFailure(Throwable throwable) {
-        watcher.watchFailed(throwable);
-      }
-    });
+    }), new PersistentWatchCallback<byte[]>(watcher));
   }
 
   public PersistentWatch watchData(final String path, final PersistentWatcher<byte[]> watcher) {
@@ -166,30 +171,16 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
 
   public void watchChildren(final PersistentWatch watch, final String path, final PersistentWatcher<List<String>> watcher) {
 
-    Preconditions.checkState(isRunning());
-
     if (watch.isCancelled()) {
       return;
     }
 
-    final ListenableFuture<List<String>> f = getChildren(path, new Watcher() {
+    addCallback(getChildren(path, new Watcher() {
       @Override
       public void process(WatchedEvent event) {
         watchChildren(path, watcher);
       }
-    });
-
-    Futures.addCallback(f, new FutureCallback<List<String>>() {
-      @Override
-      public void onSuccess(List<String> children) {
-        watcher.watchTriggered(children);
-      }
-
-      @Override
-      public void onFailure(Throwable throwable) {
-        watcher.watchFailed(throwable);
-      }
-    });
+    }), new PersistentWatchCallback<List<String>>(watcher));
 
   }
 
@@ -202,30 +193,16 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
 
   private void watchNode(final PersistentWatch watch, final String path, final PersistentWatcher<Stat> watcher) {
 
-    Preconditions.checkState(isRunning());
-
     if (watch.isCancelled()) {
       return;
     }
 
-    final ListenableFuture<Stat> f = stat(path, new Watcher() {
+    addCallback(stat(path, new Watcher() {
       @Override
       public void process(WatchedEvent event) {
         watchNode(watch, path, watcher);
       }
-    });
-
-    Futures.addCallback(f, new FutureCallback<Stat>() {
-      @Override
-      public void onSuccess(Stat stat) {
-        watcher.watchTriggered(stat);
-      }
-
-      @Override
-      public void onFailure(Throwable throwable) {
-        watcher.watchFailed(throwable);
-      }
-    });
+    }), new PersistentWatchCallback<Stat>(watcher));
 
   }
 
@@ -234,6 +211,26 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
     final PersistentWatch watch = new PersistentWatch();
     watchNode(watch, path, watcher);
     return watch;
+  }
+
+  private static class PersistentWatchCallback<T> implements FutureCallback<T> {
+
+    private final PersistentWatcher<T> watcher;
+
+    private PersistentWatchCallback(PersistentWatcher<T> watcher) {
+      this.watcher = watcher;
+    }
+
+    @Override
+    public void onSuccess(T value) {
+      watcher.watchTriggered(value);
+    }
+
+    @Override
+    public void onFailure(Throwable throwable) {
+      watcher.watchFailed(throwable);
+    }
+
   }
 
 }

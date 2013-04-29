@@ -10,7 +10,7 @@ class CompletableAsyncStringCallback extends AbstractFuture<String> implements A
   public void processResult(int rc, String path, Object ctx, String name) {
     final KeeperException.Code code = KeeperException.Code.get(rc);
     if (code.equals(KeeperException.Code.OK)) {
-      set(path);
+      set(name);
     } else {
       setException(KeeperException.create(code));
     }

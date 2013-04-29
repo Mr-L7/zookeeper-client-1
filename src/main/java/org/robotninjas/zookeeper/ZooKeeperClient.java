@@ -26,6 +26,14 @@ public interface ZooKeeperClient {
 
   ListenableFuture<Stat> setData(String path, int version, byte[] data);
 
+  ListenableFuture<List<String>> getChildren(String path);
+
   ListenableFuture<List<String>> getChildren(String path, Watcher watcher);
 
-}
+  PersistentWatch watchData(final String path, final PersistentWatcher<byte[]> watcher);
+
+  PersistentWatch watchChildren(final String path, final PersistentWatcher<List<String>> watcher);
+
+  PersistentWatch watchNode(final String path, final PersistentWatcher<Stat> watcher);
+
+  }

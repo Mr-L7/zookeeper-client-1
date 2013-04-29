@@ -1,6 +1,8 @@
 package org.robotninjas.zookeeper;
 
-import java.lang.Throwable;public interface PersistentWatcher<T> {
+import java.lang.Throwable;
+
+public interface PersistentWatcher<T> {
 
   void watchTriggered(T result);
 
