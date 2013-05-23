@@ -40,7 +40,7 @@ public class SimpleClient {
     Futures.addCallback(leaderFuture, new FutureCallback<String>() {
       @Override
       public void onSuccess(String result) {
-        client.stat(result, new Watcher() {
+        client.statAndWatch(result, new Watcher() {
           @Override
           public void process(WatchedEvent event) {
             doElection(path);
@@ -91,7 +91,7 @@ public class SimpleClient {
 
           clientService.watchChildren(path, new PersistentWatcher<List<String>>() {
             @Override
-            public void watchTriggered(List<String> result) {
+            public void watchTriggered(PersistentWatch watch, List<String> result) {
               System.out.print("Watch triggered ");
               for (final String member : result) {
                 System.out.print(member + " ");
@@ -100,7 +100,7 @@ public class SimpleClient {
             }
 
             @Override
-            public void watchFailed(Throwable t) {
+            public void watchFailed(PersistentWatch watch, Throwable reason) {
               System.out.println("Failed");
             }
           });

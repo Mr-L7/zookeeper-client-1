@@ -16,19 +16,19 @@ public interface ZooKeeperClient {
 
   ListenableFuture<Stat> stat(String path);
 
-  ListenableFuture<Stat> stat(String path, Watcher watcher);
+  ListenableFuture<Stat> statAndWatch(String path, Watcher watcher);
 
   ListenableFuture<List<ACL>> getAcl(String path);
 
   ListenableFuture<Stat> setAcl(String path, int version, List<ACL> acl);
 
-  ListenableFuture<byte[]> getData(String path, Watcher watcher);
+  ListenableFuture<byte[]> getAndWatchData(String path, Watcher watcher);
 
   ListenableFuture<Stat> setData(String path, int version, byte[] data);
 
   ListenableFuture<List<String>> getChildren(String path);
 
-  ListenableFuture<List<String>> getChildren(String path, Watcher watcher);
+  ListenableFuture<List<String>> getAndWatchChildren(String path, Watcher watcher);
 
   PersistentWatch watchData(final String path, final PersistentWatcher<byte[]> watcher);
 

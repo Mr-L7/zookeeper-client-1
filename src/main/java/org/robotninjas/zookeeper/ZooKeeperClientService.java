@@ -92,7 +92,7 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
   }
 
   @Override
-  public ListenableFuture<Stat> stat(String path, Watcher watcher) {
+  public ListenableFuture<Stat> statAndWatch(String path, Watcher watcher) {
     Preconditions.checkState(isRunning());
     final CompletableAsyncStatCallback callback = new CompletableAsyncStatCallback();
     client.get().exists(path, watcher, callback, null);
@@ -117,7 +117,7 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
   }
 
   @Override
-  public ListenableFuture<byte[]> getData(String path, Watcher watcher) {
+  public ListenableFuture<byte[]> getAndWatchData(String path, Watcher watcher) {
     Preconditions.checkState(isRunning());
     final CompletableAsyncDataCallback callback = new CompletableAsyncDataCallback();
     client.get().getData(path, watcher, callback, null);
@@ -133,7 +133,7 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
   }
 
   @Override
-  public ListenableFuture<List<String>> getChildren(String path, Watcher watcher) {
+  public ListenableFuture<List<String>> getAndWatchChildren(String path, Watcher watcher) {
     Preconditions.checkState(isRunning());
     final CompletableAsyncChildrenCallback callback = new CompletableAsyncChildrenCallback();
     client.get().getChildren(path, watcher, callback, null);
@@ -148,18 +148,18 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
     return callback;
   }
 
-  public void watchData(final PersistentWatch watch, final String path, final PersistentWatcher<byte[]> watcher) {
+  private void watchData(final PersistentWatch watch, final String path, final PersistentWatcher<byte[]> watcher) {
 
     if (watch.isCancelled()) {
       return;
     }
 
-    addCallback(getData(path, new Watcher() {
+    addCallback(getAndWatchData(path, new Watcher() {
       @Override
       public void process(WatchedEvent event) {
         watchData(path, watcher);
       }
-    }), new PersistentWatchCallback<byte[]>(watcher));
+    }), new PersistentWatchCallback<byte[]>(watcher, watch));
   }
 
   public PersistentWatch watchData(final String path, final PersistentWatcher<byte[]> watcher) {
@@ -169,18 +169,18 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
     return watch;
   }
 
-  public void watchChildren(final PersistentWatch watch, final String path, final PersistentWatcher<List<String>> watcher) {
+  private void watchChildren(final PersistentWatch watch, final String path, final PersistentWatcher<List<String>> watcher) {
 
     if (watch.isCancelled()) {
       return;
     }
 
-    addCallback(getChildren(path, new Watcher() {
+    addCallback(getAndWatchChildren(path, new Watcher() {
       @Override
       public void process(WatchedEvent event) {
         watchChildren(path, watcher);
       }
-    }), new PersistentWatchCallback<List<String>>(watcher));
+    }), new PersistentWatchCallback<List<String>>(watcher, watch));
 
   }
 
@@ -197,12 +197,12 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
       return;
     }
 
-    addCallback(stat(path, new Watcher() {
+    addCallback(statAndWatch(path, new Watcher() {
       @Override
       public void process(WatchedEvent event) {
         watchNode(watch, path, watcher);
       }
-    }), new PersistentWatchCallback<Stat>(watcher));
+    }), new PersistentWatchCallback<Stat>(watcher, watch));
 
   }
 
@@ -216,19 +216,21 @@ public class ZooKeeperClientService extends AbstractService implements ZooKeeper
   private static class PersistentWatchCallback<T> implements FutureCallback<T> {
 
     private final PersistentWatcher<T> watcher;
+    private final PersistentWatch watch;
 
-    private PersistentWatchCallback(PersistentWatcher<T> watcher) {
+    private PersistentWatchCallback(PersistentWatcher<T> watcher, PersistentWatch watch) {
       this.watcher = watcher;
+      this.watch = watch;
     }
 
     @Override
     public void onSuccess(T value) {
-      watcher.watchTriggered(value);
+      watcher.watchTriggered(watch, value);
     }
 
     @Override
     public void onFailure(Throwable throwable) {
-      watcher.watchFailed(throwable);
+      watcher.watchFailed(watch, throwable);
     }
 
   }
